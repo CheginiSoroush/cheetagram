@@ -124,6 +124,7 @@ import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.LocationController;
 import org.telegram.messenger.MediaController;
+import org.telegram.messenger.cheetagram.CheetagramDownloadQueue;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -854,6 +855,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         //if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         //    refreshRateController = new RefreshRateController(this);
         //}
+        try {
+            CheetagramDownloadQueue.resumeAll();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
         checkFrameMetrics();
     }
 

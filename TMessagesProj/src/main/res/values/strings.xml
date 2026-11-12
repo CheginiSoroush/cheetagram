@@ -11679,4 +11679,12 @@
     <string name="FpnvConsentSimSlot">SIM Slot</string>
     <string name="FpnvConsentSimSlotValue">SIM %1$d</string>
     <string name="FpnvConsentPhoneNumber">Phone Number</string>
+
+    <!-- Cheetagram download queue -->
+    <string name="CheetagramAddToQueue">Add to download queue</string>
+    <string name="CheetagramQueuedCount">%1$d files added to the download queue</string>
+    <string name="CheetagramQueueEmpty">No downloadable files selected</string>
+    <string name="CheetagramQueueTitle">Cheetagram download queue</string>
+    <string name="CheetagramQueueChannel">Download queue</string>
+    <string name="CheetagramQueueDone">Download queue completed</string>
 </resources>
