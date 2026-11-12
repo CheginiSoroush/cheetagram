@@ -189,9 +189,13 @@ public class CheetagramDownloadService extends Service implements NotificationCe
                 startForeground(NOTIFICATION_ID, builder.build());
             }
         } catch (Throwable e) {
-            // ForegroundServiceStartNotAllowedException — app is in background.
-            // Downloads continue anyway; the queue is persistent.
+            // ForegroundServiceStartNotAllowedException — e.g. app is in
+            // background, or Android 15 blocks dataSync from BOOT_COMPLETED.
+            // Stop cleanly (never leave a startForegroundService unfinished),
+            // the queue stays persistent and resumes when the app opens.
             FileLog.e(e);
+            stopSelf();
+            return Service.START_NOT_STICKY;
         }
 
         if (!CheetagramDownloadQueue.getInstance(account).isProcessing()) {
@@ -212,7 +216,9 @@ public class CheetagramDownloadService extends Service implements NotificationCe
         Intent contentIntent = new Intent(this, LaunchActivity.class);
         PendingIntent contentPending = PendingIntent.getActivity(this, 4730, contentIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Intent stopIntent = new Intent(ACTION_STOP_QUEUE);
+        // setPackage: on Android 14+ implicit broadcasts are NOT delivered to
+        // RECEIVER_NOT_EXPORTED receivers unless the intent is package-scoped.
+        Intent stopIntent = new Intent(ACTION_STOP_QUEUE).setPackage(getPackageName());
         PendingIntent stopPending = PendingIntent.getBroadcast(this, 4731, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         builder.setContentTitle(LocaleController.getString(R.string.CheetagramQueueTitle))

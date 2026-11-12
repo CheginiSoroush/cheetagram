@@ -29,7 +29,6 @@ import org.telegram.messenger.BaseController;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -47,6 +46,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
     private static final int NOTIFICATION_ID = 47301;
     private static final int DONE_NOTIFICATION_ID = 47303;
     private static final long ITEM_TIMEOUT_MS = 45 * 60 * 1000L;
+    private static final long SAVE_TIMEOUT_MS = 3 * 60 * 1000L;
     private static final int MAX_ATTEMPTS = 3;
 
     // region Public state (read by CheetagramDownloadService)
@@ -171,9 +171,16 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
     private void ensureTable() {
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
             try {
-                getMessagesStorage().getDatabase().executeFast("CREATE TABLE IF NOT EXISTS cheetagram_queue(data BLOB, dialog_id INTEGER, msg_id INTEGER, doc_id INTEGER, state INTEGER, date INTEGER, PRIMARY KEY(doc_id))").stepThis().dispose();
+                getMessagesStorage().getDatabase().executeFast("CREATE TABLE IF NOT EXISTS cheetagram_queue(data BLOB, dialog_id INTEGER, msg_id INTEGER, doc_id INTEGER, state INTEGER, date INTEGER, attempts INTEGER DEFAULT 0, PRIMARY KEY(doc_id))").stepThis().dispose();
             } catch (Exception e) {
                 FileLog.e(e);
+            }
+            // Upgrade path for installs of Cheetagram <= 13.2.2-cheeta.2 that
+            // already created the table without the attempts column.
+            try {
+                getMessagesStorage().getDatabase().executeFast("ALTER TABLE cheetagram_queue ADD COLUMN attempts INTEGER DEFAULT 0").stepThis().dispose();
+            } catch (Exception e) {
+                // "duplicate column name" — column already exists, fine.
             }
         });
     }
@@ -213,13 +220,14 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
                     }
                     data = new NativeByteBuffer(message.getObjectSize());
                     message.serializeToStream(data);
-                    SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO cheetagram_queue(data, dialog_id, msg_id, doc_id, state, date) VALUES(?, ?, ?, ?, ?, ?)");
+                    SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO cheetagram_queue(data, dialog_id, msg_id, doc_id, state, date, attempts) VALUES(?, ?, ?, ?, ?, ?, ?)");
                     state.bindByteBuffer(1, data);
                     state.bindLong(2, message.dialog_id);
                     state.bindInteger(3, message.id);
                     state.bindLong(4, docId);
                     state.bindInteger(5, 0);
                     state.bindLong(6, date);
+                    state.bindInteger(7, 0);
                     state.step();
                     state.dispose();
                     AndroidUtilities.runOnUIThread(CheetagramDownloadQueue.this::processNext);
@@ -247,7 +255,9 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
             int pending = 0;
             try {
                 getMessagesStorage().getDatabase().executeFast("UPDATE cheetagram_queue SET state = 0 WHERE state = 1").stepThis().dispose();
-                SQLiteCursor cursor = getMessagesStorage().getDatabase().queryFinalized("SELECT COUNT(*) FROM cheetagram_queue WHERE state = 0");
+                // drop items that permanently failed too many times
+                getMessagesStorage().getDatabase().executeFast("DELETE FROM cheetagram_queue WHERE attempts >= " + MAX_ATTEMPTS).stepThis().dispose();
+                SQLiteCursor cursor = getMessagesStorage().getDatabase().queryFinalized("SELECT COUNT(*) FROM cheetagram_queue WHERE state = 0 AND attempts < " + MAX_ATTEMPTS);
                 if (cursor.next()) {
                     pending = (int) cursor.longValue(0);
                 }
@@ -290,7 +300,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
             QueueItem next = null;
             try {
-                SQLiteCursor cursor = getMessagesStorage().getDatabase().queryFinalized("SELECT data, dialog_id, msg_id, doc_id FROM cheetagram_queue WHERE state = 0 ORDER BY date ASC LIMIT 1");
+                SQLiteCursor cursor = getMessagesStorage().getDatabase().queryFinalized("SELECT data, dialog_id, msg_id, doc_id, attempts FROM cheetagram_queue WHERE state = 0 AND attempts < " + MAX_ATTEMPTS + " ORDER BY date ASC LIMIT 1");
                 if (cursor.next()) {
                     NativeByteBuffer data = cursor.byteBufferValue(0);
                     if (data != null) {
@@ -301,6 +311,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
                             next.message = message;
                             next.docId = cursor.longValue(3);
                             next.document = MessageObject.getDocument(message);
+                            next.attempts = cursor.intValue(4);
                         }
                         data.reuse();
                     }
@@ -386,8 +397,11 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         }
         final String path = readyPath;
         final String mime = item.document.mime_type != null ? item.document.mime_type : "application/octet-stream";
-        MediaController.saveFile(path, ApplicationLoader.applicationContext, 2, item.displayName, mime, uri ->
-            AndroidUtilities.runOnUIThread(() -> finishItem(true))
+        // Re-arm the watchdog for the SAVE phase: MediaController.saveFile could
+        // stall without a callback in edge cases — never leave the queue stuck.
+        scheduleWatchdog(SAVE_TIMEOUT_MS);
+        CheetagramSaver.saveToDownloads(path, item.displayName, mime, uri ->
+            AndroidUtilities.runOnUIThread(() -> finishItem(uri != null))
         );
     }
 
@@ -398,26 +412,38 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         }
         currentItem = null;
         AndroidUtilities.cancelRunOnUIThread(watchdogRunnable);
-        sessionDone++;
         if (!success && item.attempts + 1 < MAX_ATTEMPTS) {
             item.attempts++;
             final long docId = item.docId;
+            final int attempts = item.attempts;
             getMessagesStorage().getStorageQueue().postRunnable(() -> {
                 try {
-                    getMessagesStorage().getDatabase().executeFast("UPDATE cheetagram_queue SET state = 0 WHERE doc_id = " + docId).stepThis().dispose();
+                    SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("UPDATE cheetagram_queue SET state = 0, attempts = ? WHERE doc_id = ?");
+                    state.bindInteger(1, attempts);
+                    state.bindLong(2, docId);
+                    state.step();
+                    state.dispose();
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
             });
+            // brief pause before the retry so permanent failures do not spin
+            AndroidUtilities.runOnUIThread(this::processNext, 5000);
         } else {
+            // count an item only when it is finally resolved (saved or dropped)
+            sessionDone++;
             deleteRow(item.docId);
+            processNext();
         }
-        processNext();
     }
 
     private void scheduleWatchdog() {
+        scheduleWatchdog(ITEM_TIMEOUT_MS);
+    }
+
+    private void scheduleWatchdog(long timeoutMs) {
         AndroidUtilities.cancelRunOnUIThread(watchdogRunnable);
-        AndroidUtilities.runOnUIThread(watchdogRunnable, ITEM_TIMEOUT_MS);
+        AndroidUtilities.runOnUIThread(watchdogRunnable, timeoutMs);
     }
 
     // endregion
