@@ -17,9 +17,7 @@ package org.telegram.messenger.cheetagram;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Build;
 import android.text.TextUtils;
 
@@ -36,23 +34,77 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
-import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Locale;
 
 public class CheetagramDownloadQueue extends BaseController implements NotificationCenter.NotificationCenterDelegate {
 
     private static final String CHANNEL_ID = "cheetagram_download_queue";
     private static final int NOTIFICATION_ID = 47301;
+    private static final int DONE_NOTIFICATION_ID = 47303;
     private static final long ITEM_TIMEOUT_MS = 45 * 60 * 1000L;
     private static final int MAX_ATTEMPTS = 3;
-    private static final long PROGRESS_NOTIFY_MIN_INTERVAL_MS = 1500L;
+
+    // region Public state (read by CheetagramDownloadService)
+
+    public boolean isProcessing() {
+        return currentItem != null || pulling;
+    }
+
+    public String getCurrentFileName() {
+        QueueItem item = currentItem;
+        return item != null ? item.attachFileName : null;
+    }
+
+    public String getCurrentDisplayName() {
+        QueueItem item = currentItem;
+        return item != null ? item.displayName : null;
+    }
+
+    public int getSessionDone() {
+        return sessionDone;
+    }
+
+    public int getSessionTotal() {
+        return sessionTotal;
+    }
+
+    /**
+     * Cancels everything: stops the current download, wipes the persisted
+     * queue and stops the foreground service. Called from the service's
+     * "Stop" notification action.
+     */
+    public void clearAll() {
+        QueueItem item = currentItem;
+        currentItem = null;
+        AndroidUtilities.cancelRunOnUIThread(watchdogRunnable);
+        if (item != null && item.document != null) {
+            try {
+                getFileLoader().cancelLoadFile(item.document);
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        }
+        queuedDocIds.clear();
+        sessionTotal = 0;
+        sessionDone = 0;
+        hadActiveSession = false;
+        getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            try {
+                getMessagesStorage().getDatabase().executeFast("DELETE FROM cheetagram_queue").stepThis().dispose();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        });
+        cancelNotification();
+        CheetagramDownloadService.stop();
+    }
+
+    // endregion
 
     private static volatile CheetagramDownloadQueue[] Instance = new CheetagramDownloadQueue[UserConfig.MAX_ACCOUNT_COUNT];
 
@@ -94,7 +146,8 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
     private QueueItem currentItem;
     private boolean pulling;
     private boolean hadActiveSession;
-    private long lastProgressNotifyTime;
+    private int sessionTotal;
+    private int sessionDone;
     private final HashSet<Long> queuedDocIds = new HashSet<>();
 
     private final Runnable watchdogRunnable = () -> {
@@ -110,7 +163,6 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         AndroidUtilities.runOnUIThread(() -> {
             getNotificationCenter().addObserver(this, NotificationCenter.fileLoaded);
             getNotificationCenter().addObserver(this, NotificationCenter.fileLoadFailed);
-            getNotificationCenter().addObserver(this, NotificationCenter.fileLoadProgressChanged);
         });
     }
 
@@ -182,6 +234,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
             });
         }
         if (added > 0) {
+            sessionTotal += added;
             AndroidUtilities.runOnUIThread(this::processNext);
         }
         return added;
@@ -191,12 +244,26 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
     public void resumeIfNeeded() {
         CheetagramDownloadQueue self = this;
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            int pending = 0;
             try {
                 getMessagesStorage().getDatabase().executeFast("UPDATE cheetagram_queue SET state = 0 WHERE state = 1").stepThis().dispose();
+                SQLiteCursor cursor = getMessagesStorage().getDatabase().queryFinalized("SELECT COUNT(*) FROM cheetagram_queue WHERE state = 0");
+                if (cursor.next()) {
+                    pending = (int) cursor.longValue(0);
+                }
+                cursor.dispose();
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            AndroidUtilities.runOnUIThread(self::processNext);
+            final int count = pending;
+            AndroidUtilities.runOnUIThread(() -> {
+                sessionTotal = count;
+                sessionDone = 0;
+                if (count > 0) {
+                    hadActiveSession = true;
+                }
+                self.processNext();
+            });
         });
     }
 
@@ -215,7 +282,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
 
     // region Processing
 
-    private void processNext() {
+    void processNext() {
         if (currentItem != null || pulling) {
             return;
         }
@@ -249,6 +316,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
             AndroidUtilities.runOnUIThread(() -> {
                 pulling = false;
                 if (item == null) {
+                    CheetagramDownloadService.stop();
                     if (hadActiveSession) {
                         notifyQueueDone();
                         hadActiveSession = false;
@@ -287,6 +355,10 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         }
         item.size = item.document.size;
 
+        // Foreground service keeps the CPU awake and Wi-Fi at full power so
+        // downloads continue while the screen is locked / device in Doze.
+        CheetagramDownloadService.start(currentAccount);
+
         File existing = getFileLoader().getPathToMessage(item.message, true);
         if (existing != null && existing.exists()) {
             saveToDownloads(existing.getAbsolutePath());
@@ -295,7 +367,6 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
 
         MessageObject wrapper = new MessageObject(currentAccount, item.message, false, false);
         wrapper.putInDownloadsStore = true;
-        updateNotification(0, 0);
         scheduleWatchdog();
         getFileLoader().loadFile(item.document, wrapper, FileLoader.PRIORITY_NORMAL, 0);
     }
@@ -327,7 +398,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         }
         currentItem = null;
         AndroidUtilities.cancelRunOnUIThread(watchdogRunnable);
-        cancelNotification();
+        sessionDone++;
         if (!success && item.attempts + 1 < MAX_ATTEMPTS) {
             item.attempts++;
             final long docId = item.docId;
@@ -370,14 +441,9 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
                 AndroidUtilities.cancelRunOnUIThread(watchdogRunnable);
                 finishItem(false);
             }
-        } else if (id == NotificationCenter.fileLoadProgressChanged) {
-            String location = (String) args[0];
-            if (currentItem.attachFileName != null && currentItem.attachFileName.equals(location) && args.length >= 3) {
-                long loaded = args[1] instanceof Long ? (Long) args[1] : 0L;
-                long total = args[2] instanceof Long ? (Long) args[2] : 0L;
-                updateProgressNotification(loaded, total);
-            }
         }
+        // Progress events are handled by CheetagramDownloadService (foreground
+        // notification); the queue itself only reacts to completion/failure.
     }
 
     // endregion
@@ -394,42 +460,6 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
         }
     }
 
-    private void updateNotification(int progress, long bytesLoaded) {
-        QueueItem item = currentItem;
-        if (item == null) {
-            return;
-        }
-        ensureChannel();
-        Context context = ApplicationLoader.applicationContext;
-        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-            ? new Notification.Builder(context, CHANNEL_ID)
-            : new Notification.Builder(context);
-        Intent intent = new Intent(context, LaunchActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        builder.setSmallIcon(R.drawable.msg_download)
-            .setContentTitle(LocaleController.getString(R.string.CheetagramQueueTitle))
-            .setContentText(item.displayName)
-            .setContentIntent(pendingIntent)
-            .setOnlyAlertOnce(true)
-            .setOngoing(true);
-        if (progress > 0) {
-            builder.setProgress(100, progress, false);
-        } else {
-            builder.setProgress(0, 0, true);
-        }
-        notifySafely(NOTIFICATION_ID, builder.build());
-    }
-
-    private void updateProgressNotification(long loaded, long total) {
-        long now = System.currentTimeMillis();
-        if (now - lastProgressNotifyTime < PROGRESS_NOTIFY_MIN_INTERVAL_MS) {
-            return;
-        }
-        lastProgressNotifyTime = now;
-        int progress = total > 0 ? (int) (loaded * 100 / total) : 0;
-        updateNotification(progress, loaded);
-    }
-
     private void notifyQueueDone() {
         ensureChannel();
         Context context = ApplicationLoader.applicationContext;
@@ -440,7 +470,7 @@ public class CheetagramDownloadQueue extends BaseController implements Notificat
             .setContentTitle(LocaleController.getString(R.string.CheetagramQueueTitle))
             .setContentText(LocaleController.getString(R.string.CheetagramQueueDone))
             .setAutoCancel(true);
-        notifySafely(NOTIFICATION_ID + 1, builder.build());
+        notifySafely(DONE_NOTIFICATION_ID, builder.build());
     }
 
     private void cancelNotification() {

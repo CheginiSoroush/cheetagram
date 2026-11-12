@@ -7,4 +7,7 @@
     <string name="CheetagramQueueTitle">صف دانلود چیتاگرام</string>
     <string name="CheetagramQueueChannel">صف دانلود</string>
     <string name="CheetagramQueueDone">صف دانلود کامل شد</string>
+    <string name="CheetagramQueueDownloading">در حال دانلود %1$d از %2$d</string>
+    <string name="CheetagramQueuePreparing">در حال آماده‌سازی دانلود…</string>
+    <string name="CheetagramQueueStop">توقف</string>
 </resources>
