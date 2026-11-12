@@ -12,6 +12,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
+import org.telegram.messenger.cheetagram.CheetagramDownloadQueue;
+
 public class AppStartReceiver extends BroadcastReceiver {
 
     public void onReceive(Context context, Intent intent) {
@@ -23,6 +25,14 @@ public class AppStartReceiver extends BroadcastReceiver {
                     SharedConfig.saveConfig();
                 }
                 ApplicationLoader.startPushService();
+                AndroidUtilities.runOnUIThread(() -> {
+                    try {
+                        ApplicationLoader.postInitApplication();
+                        CheetagramDownloadQueue.resumeAll();
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }, 8000);
             });
         }
     }

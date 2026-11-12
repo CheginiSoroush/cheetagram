@@ -37,8 +37,8 @@ jobs:
           VERSION=$(grep '^APP_VERSION_NAME=' gradle.properties | cut -d= -f2)
           CODE=$(grep '^APP_VERSION_CODE=' gradle.properties | cut -d= -f2)
           mkdir -p release-out
-          cp TMessagesProj_App/build/outputs/apk/afat/release/*.apk "release-out/Telegram-v${VERSION}-${CODE}.apk"
-          cp TMessagesProj_App/build/outputs/bundle/bundleAfatRelease/*.aab "release-out/Telegram-v${VERSION}-${CODE}.aab" 2>/dev/null || true
+          cp TMessagesProj_App/build/outputs/apk/afat/release/*.apk "release-out/Cheetagram-v${VERSION}-${CODE}.apk"
+          cp TMessagesProj_App/build/outputs/bundle/bundleAfatRelease/*.aab "release-out/Cheetagram-v${VERSION}-${CODE}.aab" 2>/dev/null || true
           cp TMessagesProj_App/build/outputs/mapping/*/*.txt "release-out/mapping.txt" 2>/dev/null || true
           ls -la release-out
 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cheetagram download queue -->
+    <string name="CheetagramAddToQueue">افزودن به صف دانلود</string>
+    <string name="CheetagramQueuedCount">%1$d فایل به صف دانلود اضافه شد</string>
+    <string name="CheetagramQueueEmpty">هیچ فایل قابل دانلودی انتخاب نشده است</string>
+    <string name="CheetagramQueueTitle">صف دانلود چیتاگرام</string>
+    <string name="CheetagramQueueChannel">صف دانلود</string>
+    <string name="CheetagramQueueDone">صف دانلود کامل شد</string>
+    <string name="CheetagramQueueDownloading">در حال دانلود %1$d از %2$d</string>
+    <string name="CheetagramQueuePreparing">در حال آماده‌سازی دانلود…</string>
+    <string name="CheetagramQueueStop">توقف</string>
+</resources>
