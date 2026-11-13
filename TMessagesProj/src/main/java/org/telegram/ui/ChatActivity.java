@@ -896,6 +896,9 @@ public class ChatActivity extends BaseFragment implements
     private int cantSaveMessagesCount;
     private int canSaveMusicCount;
     private int canSaveDocumentsCount;
+    // Cheetagram: videos are neither isMusic() nor isDocument() — count them
+    // separately so the download-queue action appears when videos are selected.
+    private int canSaveVideosCount;
     private ArrayList<Integer> waitingForLoad = new ArrayList<>();
     private boolean needRemovePreviousSameChatActivity = true;
 
@@ -3682,6 +3685,7 @@ public class ChatActivity extends BaseFragment implements
         cantSaveMessagesCount = 0;
         canSaveMusicCount = 0;
         canSaveDocumentsCount = 0;
+        canSaveVideosCount = 0;
 
         hasOwnBackground = true;
         if (chatAttachAlert != null) {
@@ -19932,6 +19936,8 @@ public class ChatActivity extends BaseFragment implements
                         canSaveMusicCount--;
                     } else if (messageObject.isDocument() && canSaveSelectedMessage(messageObject)) {
                         canSaveDocumentsCount--;
+                    } else if (messageObject.isVideo() && canSaveSelectedMessage(messageObject)) {
+                        canSaveVideosCount--;
                     } else {
                         cantSaveMessagesCount--;
                     }
@@ -19969,6 +19975,8 @@ public class ChatActivity extends BaseFragment implements
                         canSaveMusicCount++;
                     } else if (messageObject.isDocument() && canSaveSelectedMessage(messageObject)) {
                         canSaveDocumentsCount++;
+                    } else if (messageObject.isVideo() && canSaveSelectedMessage(messageObject)) {
+                        canSaveVideosCount++;
                     } else {
                         cantSaveMessagesCount++;
                     }
@@ -20039,7 +20047,10 @@ public class ChatActivity extends BaseFragment implements
                     saveItem.setContentDescription(canSaveMusicCount > 0 ? LocaleController.getString(R.string.SaveToMusic) : LocaleController.getString(R.string.SaveToDownloads));
                 }
                 if (cheetagramQueueItem != null) {
-                    cheetagramQueueItem.setVisibility((canSaveDocumentsCount > 0 || canSaveMusicCount > 0) && cantSaveMessagesCount == 0 ? View.VISIBLE : View.GONE);
+                    // Cheetagram: show the queue action whenever at least one
+                    // queueable item (video / document / music) is selected —
+                    // even mixed with photos or text (those are simply skipped).
+                    cheetagramQueueItem.setVisibility(canSaveDocumentsCount > 0 || canSaveMusicCount > 0 || canSaveVideosCount > 0 ? View.VISIBLE : View.GONE);
                 }
 
                 int copyVisible = View.GONE, starVisible = View.GONE, newCopyVisible = View.GONE, newStarVisible = View.GONE;
