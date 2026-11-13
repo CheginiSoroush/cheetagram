@@ -126,7 +126,7 @@ public class ThemeColors {
         defaultColors[key_checkboxSquareCheck] = 0xffffffff;
         defaultColors[key_checkboxSquareUnchecked] = 0xff737373;
         defaultColors[key_checkboxSquareDisabled] = 0xffb0b0b0;
-        defaultColors[key_listSelector] = 0x0f000000;
+        defaultColors[key_listSelector] = 0x18FFFFFF; // was 0x0f000000: black ripple on black = invisible
         defaultColors[key_settings_listSelector] = 0x1d000010;
         defaultColors[key_radioBackground] = 0xffb3b3b3;
         defaultColors[key_radioBackgroundChecked] = TELEGRAM_COLOR;
