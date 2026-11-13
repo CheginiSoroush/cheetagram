@@ -26,12 +26,11 @@ public class BuildVars {
     public static boolean NO_SCOPED_STORAGE = Build.VERSION.SDK_INT <= 29;
     public static String BUILD_VERSION_STRING = BuildConfig.BUILD_VERSION_STRING;
 
-    // Cheetagram: use the well-known Telegram Desktop API pair (api_id 6).
-    // Upstream ships api_id=4 which Telegram flood-limits for sendCode, breaking login.
-    // TODO: for production, register a dedicated app at https://my.telegram.org/apps
-    //       and replace APP_ID / APP_HASH below.
-    public static int APP_ID = 6;
-    public static String APP_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e";
+    // Cheetagram: dedicated API credentials registered at https://my.telegram.org/apps.
+    // The old api_id=6 (Telegram Desktop test pair) is flood-limited and shared;
+    // a dedicated pair gives proper sendCode limits and app identity.
+    public static int APP_ID = 29717992;
+    public static String APP_HASH = "95b4bc00575a8d90149f32d6cd13acf0";
 
     // SafetyNet key for Google Identity SDK, set it to empty to disable
     public static String SAFETYNET_KEY = "AIzaSyDqt8P-7F7CPCseMkOiVRgb1LY8RN1bvH8";
