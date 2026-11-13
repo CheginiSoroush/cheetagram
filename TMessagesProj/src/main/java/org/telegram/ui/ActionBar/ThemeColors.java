@@ -118,8 +118,8 @@ public class ThemeColors {
         defaultColors[key_switchTrackBlueChecked] = 0xffC77F1F;
         defaultColors[key_switchTrackBlueThumb] = 0xffffffff;
         defaultColors[key_switchTrackBlueThumbChecked] = 0xffffffff;
-        defaultColors[key_switchTrackBlueSelector] = 0x17404a53;
-        defaultColors[key_switchTrackBlueSelectorChecked] = 0x21024781;
+        defaultColors[key_switchTrackBlueSelector] = 0x17FFFFFF;
+        defaultColors[key_switchTrackBlueSelectorChecked] = 0x21E8A33D;
         defaultColors[key_switch2Track] = 0xfff57e7e;
         defaultColors[key_switch2TrackChecked] = TELEGRAM_COLOR;
         defaultColors[key_checkboxSquareBackground] = TELEGRAM_COLOR;
@@ -690,7 +690,7 @@ public class ThemeColors {
 
         defaultColors[key_chat_botSwitchToInlineText] = 0xffC6842A;
 
-        defaultColors[key_undo_background] = 0xea272f38;
+        defaultColors[key_undo_background] = 0xea1e1e1e;
         defaultColors[key_undo_cancelColor] = 0xffF2BE6A;
         defaultColors[key_undo_infoColor] = 0xffffffff;
 
@@ -744,7 +744,7 @@ public class ThemeColors {
         defaultColors[key_statisticChartActivePickerChart] = 0xd8baccd9;
 
         defaultColors[key_statisticChartRipple] = 0x2c7e9db7;
-        defaultColors[key_statisticChartBackZoomColor] = 0xff108BE3;
+        defaultColors[key_statisticChartBackZoomColor] = 0xffE8A33D;
         defaultColors[key_statisticChartChevronColor] = 0xffD2D5D7;
 
         defaultColors[key_statisticChartLine_blue] = 0xff327FE5;
@@ -868,10 +868,10 @@ public class ThemeColors {
         defaultColors[key_starsGradient1] = 0xffFEC846;
         defaultColors[key_starsGradient2] = 0xffEC920A;
 
-        defaultColors[key_stories_circle1] = 0xFF2C9EFC; // 0xFF39DF3C;
-        defaultColors[key_stories_circle2] = 0xFF2fc183; // 0xFF4DBBFF;
-        defaultColors[key_stories_circle_dialog1] = 0xFF2C9EFC; // 0xFF4AED55;
-        defaultColors[key_stories_circle_dialog2] = 0xFF2fc183; // 0xFF4DC3FF;
+        defaultColors[key_stories_circle1] = 0xFFD18A20; // amber gradient, was Telegram blue
+        defaultColors[key_stories_circle2] = 0xFFE8A33D;
+        defaultColors[key_stories_circle_dialog1] = 0xFFD18A20;
+        defaultColors[key_stories_circle_dialog2] = 0xFFE8A33D;
         defaultColors[key_stories_circle_closeFriends1] = 0xFF81ce2d; // 0xFFC9EB38;
         defaultColors[key_stories_circle_closeFriends2] = 0xFF18bd36; // 0xFF09C167;
         defaultColors[key_stories_circle_live1] = 0xFFFF6B5B;
