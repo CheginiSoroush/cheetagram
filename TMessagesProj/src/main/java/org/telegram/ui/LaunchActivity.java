@@ -125,6 +125,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.LocationController;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.cheetagram.CheetagramDownloadQueue;
+import org.telegram.messenger.cheetagram.CheetagramThemeUpgrade;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -857,6 +858,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         //}
         try {
             CheetagramDownloadQueue.resumeAll();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        // Cheetagram: pick up built-in theme changes (OLED refresh) on upgrades
+        try {
+            CheetagramThemeUpgrade.checkAndApply();
         } catch (Exception e) {
             FileLog.e(e);
         }
